@@ -17,7 +17,8 @@ app = FastAPI(
 origins = [
     "http://localhost:4200", # Default Angular local development server
     "http://127.0.0.1:4200",
-    "*" # Allows all origins for development purposes. Should be restricted in production.
+    "https://www.mahipal.tech", # Production frontend URL
+    "https://mahipal.tech" # Production frontend URL without www
 ]
 
 app.add_middleware(
