@@ -3,7 +3,7 @@ from fastapi import FastAPI
 # pyrefly: ignore [missing-import]
 from fastapi.middleware.cors import CORSMiddleware
 from app.database import connect_to_mongo, close_mongo_connection
-from app.routes import health, contact
+from app.routes import health, contact, auth
 
 # Initialize FastAPI application
 app = FastAPI(
@@ -40,6 +40,7 @@ async def shutdown_db_client():
 
 # Include Routers
 app.include_router(health.router, tags=["Health"])
+app.include_router(auth.router, prefix="/api", tags=["Auth"])
 app.include_router(contact.router, prefix="/api", tags=["Contact"])
 
 @app.get("/")

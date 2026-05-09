@@ -1,30 +1,45 @@
 # pyrefly: ignore [missing-import]
-from fastapi import APIRouter, HTTPException, status, Query, Header, Depends
+from datetime import datetime, timezone
+
+from fastapi import APIRouter, HTTPException, status, Query, Depends
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from app.models import ContactForm, DeleteContactsRequest
 from app.database import get_database
 # pyrefly: ignore [missing-import]
 from bson.objectid import ObjectId
-import os
 
 router = APIRouter()
+bearer_scheme = HTTPBearer()
 
-# API Key validation function
-def verify_api_key(x_api_key: str = Header(...)):
-    """
-    Dependency to verify API key for protected endpoints.
-    The API key should be passed in the X-API-Key header.
-    """
-    api_key = os.getenv("PORTFOLIO_API_KEY")
-    if not api_key:
+
+async def verify_access_token(credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme)):
+    db = get_database()
+    if db is None:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="API key not configured on server."
+            detail="Database connection is not initialized."
         )
-    if x_api_key != api_key:
+
+    token = credentials.credentials
+    session = await db.auth_sessions.find_one({"token": token})
+    if not session:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid API key."
+            detail="Invalid or expired token."
         )
+
+    now = datetime.now(timezone.utc)
+    expires_at = session.get("expires_at")
+    # Ensure expires_at is timezone-aware for comparison
+    if expires_at and expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if not expires_at or expires_at <= now:
+        await db.auth_sessions.delete_one({"_id": session["_id"]})
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token."
+        )
+
     return True
 
 @router.post("/contact", status_code=status.HTTP_201_CREATED)
@@ -58,7 +73,7 @@ async def submit_contact(contact: ContactForm):
 @router.delete("/contacts", status_code=status.HTTP_200_OK)
 async def delete_contacts(
     request: DeleteContactsRequest,
-    _: bool = Depends(verify_api_key)
+    _: bool = Depends(verify_access_token)
 ):
     db = get_database()
     if db is None:
@@ -92,7 +107,7 @@ async def delete_contacts(
 async def get_contacts(
     page: int = Query(1, ge=1, description="Page number"),
     limit: int = Query(10, ge=1, le=100, description="Items per page"),
-    _: bool = Depends(verify_api_key)
+    _: bool = Depends(verify_access_token)
 ):
     db = get_database()
     if db is None:

@@ -10,3 +10,14 @@ class ContactForm(BaseModel):
 
 class DeleteContactsRequest(BaseModel):
     ids: List[str] = Field(..., description="List of MongoDB ObjectIds as strings to delete")
+
+
+class AuthLoginRequest(BaseModel):
+    user_id: str = Field(..., min_length=3, max_length=100, description="Frontend user identifier")
+    hash_password: str = Field(..., min_length=20, max_length=500, description="Hashed password from frontend")
+
+
+class AuthLoginResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    expires_in: int
