@@ -1,11 +1,31 @@
 # pyrefly: ignore [missing-import]
-from fastapi import APIRouter, HTTPException, status, Query
+from fastapi import APIRouter, HTTPException, status, Query, Header, Depends
 from app.models import ContactForm, DeleteContactsRequest
 from app.database import get_database
 # pyrefly: ignore [missing-import]
 from bson.objectid import ObjectId
+import os
 
 router = APIRouter()
+
+# API Key validation function
+def verify_api_key(x_api_key: str = Header(...)):
+    """
+    Dependency to verify API key for protected endpoints.
+    The API key should be passed in the X-API-Key header.
+    """
+    api_key = os.getenv("PORTFOLIO_API_KEY")
+    if not api_key:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="API key not configured on server."
+        )
+    if x_api_key != api_key:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid API key."
+        )
+    return True
 
 @router.post("/contact", status_code=status.HTTP_201_CREATED)
 async def submit_contact(contact: ContactForm):
@@ -36,7 +56,10 @@ async def submit_contact(contact: ContactForm):
         )
 
 @router.delete("/contacts", status_code=status.HTTP_200_OK)
-async def delete_contacts(request: DeleteContactsRequest):
+async def delete_contacts(
+    request: DeleteContactsRequest,
+    _: bool = Depends(verify_api_key)
+):
     db = get_database()
     if db is None:
         raise HTTPException(
@@ -68,7 +91,8 @@ async def delete_contacts(request: DeleteContactsRequest):
 @router.get("/contacts", status_code=status.HTTP_200_OK)
 async def get_contacts(
     page: int = Query(1, ge=1, description="Page number"),
-    limit: int = Query(10, ge=1, le=100, description="Items per page")
+    limit: int = Query(10, ge=1, le=100, description="Items per page"),
+    _: bool = Depends(verify_api_key)
 ):
     db = get_database()
     if db is None:
