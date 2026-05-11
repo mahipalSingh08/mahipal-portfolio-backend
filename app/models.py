@@ -21,3 +21,8 @@ class AuthLoginResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     expires_in: int
+
+class Reaction(BaseModel):
+    reaction: str
+    email: str
+    name: str
