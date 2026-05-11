@@ -1,5 +1,5 @@
 # pyrefly: ignore [missing-import]
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 from fastapi import APIRouter, HTTPException, status, Query, Depends
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -28,11 +28,14 @@ async def verify_access_token(credentials: HTTPAuthorizationCredentials = Depend
             detail="Invalid or expired token."
         )
 
-    now = datetime.now(timezone.utc)
+    ist_timezone = timezone(timedelta(hours=5, minutes=30))
+    now = datetime.now(ist_timezone)
     expires_at = session.get("expires_at")
-    # Ensure expires_at is timezone-aware for comparison
+    
+    # Ensure expires_at is timezone-aware for comparison (MongoDB returns naive UTC)
     if expires_at and expires_at.tzinfo is None:
-        expires_at = expires_at.replace(tzinfo=timezone.utc)
+        expires_at = expires_at.replace(tzinfo=timezone.utc).astimezone(ist_timezone)
+        
     if not expires_at or expires_at <= now:
         await db.auth_sessions.delete_one({"_id": session["_id"]})
         raise HTTPException(
@@ -44,7 +47,7 @@ async def verify_access_token(credentials: HTTPAuthorizationCredentials = Depend
 
 @router.post("/contact", status_code=status.HTTP_201_CREATED)
 async def submit_contact(contact: ContactForm):
-    print("contact.model_dump() ", contact.model_dump())
+    # print("contact.model_dump() ", contact.model_dump())
     db = get_database()
     if db is None:
         raise HTTPException(
@@ -124,9 +127,18 @@ async def get_contacts(
         
         total_contacts = await db.contacts.count_documents({})
         
+        ist_timezone = timezone(timedelta(hours=5, minutes=30))
         formatted_contacts = []
         for contact in contacts:
             contact["_id"] = str(contact["_id"])
+            
+            # Convert created_at from MongoDB UTC to IST
+            created_at = contact.get("created_at")
+            if created_at and isinstance(created_at, datetime):
+                if created_at.tzinfo is None:
+                    created_at = created_at.replace(tzinfo=timezone.utc)
+                contact["created_at"] = created_at.astimezone(ist_timezone)
+                
             formatted_contacts.append(contact)
             
         return {

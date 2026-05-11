@@ -22,7 +22,7 @@ async def login(payload: AuthLoginRequest):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Auth credentials are not configured on server."
         )
-    print("pay", payload)
+    # print("pay", payload)
     if payload.user_id != expected_user_id or payload.hash_password != expected_password_hash:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -37,7 +37,8 @@ async def login(payload: AuthLoginRequest):
         )
 
     token = secrets.token_urlsafe(48)
-    now = datetime.now(timezone.utc)
+    ist_timezone = timezone(timedelta(hours=5, minutes=30))
+    now = datetime.now(ist_timezone)
     expires_at = now + timedelta(minutes=SESSION_DURATION_MINUTES)
 
     await db.auth_sessions.insert_one(

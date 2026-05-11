@@ -19,7 +19,11 @@ async def connect_to_mongo():
             client = AsyncIOMotorClient(MONGODB_URI)
             # Use a default database name 'portfolio'
             db = client.portfolio
-            print("Connected to MongoDB!")
+            
+            # Create TTL index for auth_sessions collection to auto-delete tokens after 24 hours
+            await db.auth_sessions.create_index("created_at", expireAfterSeconds=86400)
+            
+            print("Connected to MongoDB and initialized TTL index!")
         except Exception as e:
             print(f"Could not connect to MongoDB: {e}")
     else:
