@@ -1,15 +1,53 @@
 # pyrefly: ignore [missing-import]
-from fastapi import APIRouter, HTTPException, status, Query
+from datetime import datetime, timezone
+import logging
+
+from fastapi import APIRouter, HTTPException, status, Query, Depends
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from app.models import ContactForm, DeleteContactsRequest
 from app.database import get_database
 # pyrefly: ignore [missing-import]
 from bson.objectid import ObjectId
 
 router = APIRouter()
+bearer_scheme = HTTPBearer()
+logger = logging.getLogger(__name__)
+
+
+async def verify_access_token(credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme)):
+    db = get_database()
+    if db is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Database connection is not initialized."
+        )
+
+    token = credentials.credentials
+    session = await db.auth_sessions.find_one({"token": token})
+    if not session:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token."
+        )
+
+    now = datetime.now(timezone.utc)
+    expires_at = session.get("expires_at")
+
+    if expires_at and expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+
+    if not expires_at or expires_at <= now:
+        await db.auth_sessions.delete_one({"_id": session["_id"]})
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token."
+        )
+
+    return True
+
 
 @router.post("/contact", status_code=status.HTTP_201_CREATED)
 async def submit_contact(contact: ContactForm):
-    print("contact.model_dump() ", contact.model_dump())
     db = get_database()
     if db is None:
         raise HTTPException(
@@ -18,7 +56,8 @@ async def submit_contact(contact: ContactForm):
         )
 
     contact_dict = contact.model_dump()
-    
+    contact_dict["created_at"] = datetime.now(timezone.utc)
+
     try:
         # Insert the contact message into the 'contacts' collection
         result = await db.contacts.insert_one(contact_dict)
@@ -30,13 +69,18 @@ async def submit_contact(contact: ContactForm):
                 detail="Failed to submit contact query."
             )
     except Exception as e:
+        logger.exception("Failed to submit contact query.")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"An error occurred: {str(e)}"
-        )
+            detail="Failed to submit contact query."
+        ) from e
+
 
 @router.delete("/contacts", status_code=status.HTTP_200_OK)
-async def delete_contacts(request: DeleteContactsRequest):
+async def delete_contacts(
+    request: DeleteContactsRequest,
+    _: bool = Depends(verify_access_token)
+):
     db = get_database()
     if db is None:
         raise HTTPException(
@@ -47,13 +91,12 @@ async def delete_contacts(request: DeleteContactsRequest):
     try:
         object_ids = []
         for id_str in request.ids:
-            try:
-                object_ids.append(ObjectId(id_str))
-            except Exception:
+            if not ObjectId.is_valid(id_str):
                 raise HTTPException(status_code=400, detail=f"Invalid ID format: {id_str}")
+            object_ids.append(ObjectId(id_str))
 
         result = await db.contacts.delete_many({"_id": {"$in": object_ids}})
-        
+
         return {
             "message": f"Successfully deleted {result.deleted_count} contacts.",
             "deleted_count": result.deleted_count
@@ -61,14 +104,18 @@ async def delete_contacts(request: DeleteContactsRequest):
     except HTTPException:
         raise
     except Exception as e:
+        logger.exception("Failed to delete contacts.")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"An error occurred: {str(e)}"
-        )
+            detail="Failed to delete contacts."
+        ) from e
+
+
 @router.get("/contacts", status_code=status.HTTP_200_OK)
 async def get_contacts(
     page: int = Query(1, ge=1, description="Page number"),
-    limit: int = Query(10, ge=1, le=100, description="Items per page")
+    limit: int = Query(10, ge=1, le=100, description="Items per page"),
+    _: bool = Depends(verify_access_token)
 ):
     db = get_database()
     if db is None:
@@ -78,18 +125,25 @@ async def get_contacts(
         )
 
     skip = (page - 1) * limit
-    
+
     try:
         cursor = db.contacts.find().sort([("created_at", -1)]).skip(skip).limit(limit)
         contacts = await cursor.to_list(length=limit)
-        
+
         total_contacts = await db.contacts.count_documents({})
-        
+
         formatted_contacts = []
         for contact in contacts:
             contact["_id"] = str(contact["_id"])
+
+            created_at = contact.get("created_at")
+            if created_at and isinstance(created_at, datetime):
+                if created_at.tzinfo is None:
+                    created_at = created_at.replace(tzinfo=timezone.utc)
+                contact["created_at"] = created_at
+
             formatted_contacts.append(contact)
-            
+
         return {
             "data": formatted_contacts,
             "pagination": {
@@ -100,7 +154,8 @@ async def get_contacts(
             }
         }
     except Exception as e:
+        logger.exception("Failed to retrieve contacts.")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"An error occurred: {str(e)}"
-        )
+            detail="Failed to retrieve contacts."
+        ) from e

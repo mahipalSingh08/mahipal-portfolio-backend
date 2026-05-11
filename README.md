@@ -1,129 +1,159 @@
 # Portfolio Backend API
 
-A lightweight **FastAPI** backend powering the contact form for my Angular portfolio. It stores submissions in **MongoDB Atlas** and exposes a health-check endpoint so the frontend can conditionally render the contact form.
+A lightweight FastAPI backend for an Angular portfolio contact form. It stores submissions in MongoDB Atlas and provides authenticated admin endpoints for reading and deleting contacts.
 
----
+## Features
 
-## ✨ Features
+| Endpoint | Method | Description | Auth Required |
+|---|---|---|---|
+| `/` | GET | API welcome response | No |
+| `/health` | GET | Liveness probe | No |
+| `/api/auth/login` | POST | Admin login that returns a bearer token | No |
+| `/api/contact` | POST | Save a contact form submission | No |
+| `/api/contacts` | GET | Retrieve paginated submissions | Yes |
+| `/api/contacts` | DELETE | Bulk-delete submissions by ID | Yes |
+| `/docs` | GET | Swagger UI, when enabled | No |
+| `/redoc` | GET | ReDoc, when enabled | No |
 
-| Endpoint | Method | Description |
-|---|---|---|
-| `/` | GET | Welcome / sanity-check |
-| `/health` | GET | Liveness probe for the frontend |
-| `/api/contact` | POST | Save a contact form submission |
-| `/api/contacts` | GET | Retrieve all submissions |
-| `/api/contacts` | DELETE | Bulk-delete submissions by ID |
-| `/docs` | GET | Auto-generated Swagger UI |
-| `/redoc` | GET | ReDoc documentation |
+## Tech Stack
 
----
+- Python 3.11+
+- FastAPI
+- Uvicorn
+- Motor
+- MongoDB Atlas
+- Pydantic v2
+- python-dotenv
 
-## 🛠️ Tech Stack
+## Getting Started
 
-- **Python 3.11+**
-- **FastAPI** — async web framework
-- **Uvicorn** — ASGI server
-- **Motor** — async MongoDB driver
-- **MongoDB Atlas** — cloud database
-- **Pydantic v2** — data validation & serialisation
-- **python-dotenv** — environment variable management
-
----
-
-## 🚀 Getting Started
-
-### 1. Clone the repository
+### 1. Create and activate a virtual environment
 
 ```bash
-git clone https://github.com/<your-username>/portfolio_backend.git
-cd portfolio_backend
+python -m venv .venv
 ```
 
-### 2. Create and activate a virtual environment
+```powershell
+.venv\Scripts\activate
+```
+
+On macOS/Linux:
 
 ```bash
-# Windows
-python -m venv .venv
-.venv\Scripts\activate
-
-# macOS / Linux
-python -m venv .venv
 source .venv/bin/activate
 ```
 
-### 3. Install dependencies
+### 2. Install dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 4. Configure environment variables
+### 3. Configure environment variables
 
 ```bash
 cp .env.example .env
 ```
 
-Open `.env` and set your MongoDB Atlas connection string:
+Set at least these values:
 
 ```env
 MONGODB_URI=mongodb+srv://<username>:<password>@<cluster>.mongodb.net/portfolio?retryWrites=true&w=majority
+MONGODB_DATABASE=portfolio
+CORS_ORIGINS=http://localhost:4200,http://127.0.0.1:4200
+AUTH_USER_ID=admin
+AUTH_PASSWORD_HASH=your_precomputed_password_hash
+AUTH_SESSION_DURATION_MINUTES=60
 ```
 
-### 5. Run the development server
+### 4. Run locally
 
 ```bash
 python run.py
 ```
 
-The API will be available at `http://127.0.0.1:8000`.  
-Visit `http://127.0.0.1:8000/docs` for the interactive Swagger UI.
+The API runs at `http://127.0.0.1:8000`. Swagger UI is available at `/docs` when `ENABLE_DOCS=true`.
 
----
+## Configuration
 
-## 📁 Project Structure
+| Variable | Default | Description |
+|---|---|---|
+| `ENVIRONMENT` | `development` | Set to `production` in deployed environments |
+| `APP_NAME` | `Portfolio Backend API` | FastAPI application name |
+| `APP_VERSION` | `1.0.0` | FastAPI application version |
+| `LOG_LEVEL` | `INFO` | Uvicorn log level for `run.py` |
+| `ENABLE_DOCS` | `true` in development, `false` in production | Enables `/docs`, `/redoc`, and OpenAPI JSON |
+| `MONGODB_URI` | none | MongoDB connection string |
+| `MONGODB_DATABASE` | `portfolio` | MongoDB database name |
+| `CORS_ORIGINS` | Angular localhost origins | Comma-separated allowed frontend origins |
+| `AUTH_USER_ID` | none | Admin login user ID |
+| `AUTH_PASSWORD_HASH` | none | Precomputed admin password hash expected from the frontend |
+| `AUTH_SESSION_DURATION_MINUTES` | `60` | Bearer token lifetime |
 
+## Authentication
+
+Admin endpoints use a bearer token returned by `POST /api/auth/login`.
+
+```bash
+curl -X POST "http://localhost:8000/api/auth/login" \
+  -H "Content-Type: application/json" \
+  -d '{"user_id":"admin","hash_password":"your_precomputed_password_hash"}'
 ```
+
+Use the returned token for protected routes:
+
+```bash
+curl "http://localhost:8000/api/contacts?page=1&limit=10" \
+  -H "Authorization: Bearer <token>"
+```
+
+## Deployment
+
+For Render, set the secret environment variables in the dashboard:
+
+- `MONGODB_URI`
+- `CORS_ORIGINS`
+- `AUTH_USER_ID`
+- `AUTH_PASSWORD_HASH`
+
+The included `render.yaml` sets production defaults and starts the app with:
+
+```bash
+uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 2
+```
+
+## Production Notes
+
+- Store timestamps in UTC and convert to local time in the client when needed.
+- Keep `ENABLE_DOCS=false` in production unless public API docs are intentional.
+- Keep `CORS_ORIGINS` restricted to the deployed frontend domains.
+- Rotate `AUTH_PASSWORD_HASH` and active sessions after credential exposure.
+- MongoDB session documents expire automatically using a TTL index on `expires_at`.
+
+## Project Structure
+
+```text
 portfolio_backend/
 ├── app/
 │   ├── __init__.py
-│   ├── main.py          # FastAPI app, middleware, routers
-│   ├── database.py      # MongoDB connection lifecycle
-│   ├── models.py        # Pydantic request/response models
+│   ├── config.py
+│   ├── database.py
+│   ├── main.py
+│   ├── models.py
 │   └── routes/
-│       ├── health.py    # /health endpoint
-│       └── contact.py   # /api/contact endpoints
-├── .env.example         # Environment variable template
+│       ├── __init__.py
+│       ├── auth.py
+│       ├── contact.py
+│       └── health.py
+├── .env.example
 ├── .gitignore
 ├── requirements.txt
-├── run.py               # Uvicorn entry point
-└── README.md
+├── runtime.txt
+├── render.yaml
+├── run.py
+└── SECURITY.md
 ```
 
----
-
-## 🌐 CORS
-
-By default, the allowed origins include:
-
-```
-http://localhost:4200      (Angular dev server)
-http://127.0.0.1:4200
-```
-
-Update the `origins` list in `app/main.py` before deploying to production.
-
----
-
-## 📦 Deployment
-
-The app can be deployed to any platform that supports Python ASGI apps (e.g. **Render**, **Railway**, **Fly.io**, **AWS**). Set the `MONGODB_URI` environment variable on the platform and run:
-
-```bash
-uvicorn app.main:app --host 0.0.0.0 --port 8000
-```
-
----
-
-## 📄 License
+## License
 
 This project is open-source under the [MIT License](LICENSE).

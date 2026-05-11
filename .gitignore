@@ -1,13 +1,10 @@
-# ─────────────────────────────────────────────
-#  Environment & Secrets
-# ─────────────────────────────────────────────
+# Environment and secrets
 .env
+.env.local
 .env.*
 !.env.example
 
-# ─────────────────────────────────────────────
-#  Python
-# ─────────────────────────────────────────────
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
@@ -15,7 +12,7 @@ __pycache__/
 *.pyd
 *.so
 
-# Distribution / packaging
+# Distribution and packaging
 dist/
 build/
 *.egg-info/
@@ -28,38 +25,31 @@ MANIFEST
 venv/
 env/
 ENV/
-.env/
 
-# Pytest / coverage
+# Pytest and coverage
 .pytest_cache/
 .coverage
 htmlcov/
 coverage.xml
 *.cover
 
-# Mypy / type checking
+# Type checking
 .mypy_cache/
 .dmypy.json
 dmypy.json
 
-# ─────────────────────────────────────────────
-#  IDE & Editors
-# ─────────────────────────────────────────────
+# IDEs and editors
 .vscode/
 .idea/
 *.sublime-project
 *.sublime-workspace
 
-# ─────────────────────────────────────────────
-#  OS Artifacts
-# ─────────────────────────────────────────────
+# OS artifacts
 .DS_Store
 Thumbs.db
 desktop.ini
 
-# ─────────────────────────────────────────────
-#  Logs & Temp
-# ─────────────────────────────────────────────
+# Logs and temp files
 *.log
 *.tmp
 *.bak
