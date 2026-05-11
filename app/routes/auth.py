@@ -1,29 +1,27 @@
-import os
 import secrets
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, HTTPException, status
 
+from app.config import get_settings
 from app.database import get_database
 from app.models import AuthLoginRequest, AuthLoginResponse
 
 router = APIRouter()
-
-SESSION_DURATION_MINUTES = int(os.getenv("AUTH_SESSION_DURATION_MINUTES", "60"))
+settings = get_settings()
 
 
 @router.post("/auth/login", response_model=AuthLoginResponse, status_code=status.HTTP_200_OK)
 async def login(payload: AuthLoginRequest):
-    expected_user_id = os.getenv("AUTH_USER_ID")
-    expected_password_hash = os.getenv("AUTH_PASSWORD_HASH")
-
-    if not expected_user_id or not expected_password_hash:
+    if not settings.auth_user_id or not settings.auth_password_hash:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Auth credentials are not configured on server."
         )
-    # print("pay", payload)
-    if payload.user_id != expected_user_id or payload.hash_password != expected_password_hash:
+
+    valid_user_id = secrets.compare_digest(payload.user_id, settings.auth_user_id)
+    valid_password = secrets.compare_digest(payload.hash_password, settings.auth_password_hash)
+    if not valid_user_id or not valid_password:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid credentials."
@@ -37,9 +35,8 @@ async def login(payload: AuthLoginRequest):
         )
 
     token = secrets.token_urlsafe(48)
-    ist_timezone = timezone(timedelta(hours=5, minutes=30))
-    now = datetime.now(ist_timezone)
-    expires_at = now + timedelta(minutes=SESSION_DURATION_MINUTES)
+    now = datetime.now(timezone.utc)
+    expires_at = now + timedelta(minutes=settings.auth_session_duration_minutes)
 
     await db.auth_sessions.insert_one(
         {
@@ -52,5 +49,5 @@ async def login(payload: AuthLoginRequest):
 
     return AuthLoginResponse(
         access_token=token,
-        expires_in=SESSION_DURATION_MINUTES * 60,
+        expires_in=settings.auth_session_duration_minutes * 60,
     )

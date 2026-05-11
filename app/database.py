@@ -1,39 +1,44 @@
-import os
+import logging
+
 # pyrefly: ignore [missing-import]
 from motor.motor_asyncio import AsyncIOMotorClient
-from dotenv import load_dotenv
 
-# Load environment variables from .env file
-load_dotenv()
+from app.config import get_settings
 
-# Get MongoDB URI
-MONGODB_URI = os.getenv("MONGODB_URI")
+logger = logging.getLogger(__name__)
+settings = get_settings()
 
 client = None
 db = None
 
+
 async def connect_to_mongo():
     global client, db
-    if MONGODB_URI:
-        try:
-            client = AsyncIOMotorClient(MONGODB_URI)
-            # Use a default database name 'portfolio'
-            db = client.portfolio
-            
-            # Create TTL index for auth_sessions collection to auto-delete tokens after 24 hours
-            await db.auth_sessions.create_index("created_at", expireAfterSeconds=86400)
-            
-            print("Connected to MongoDB and initialized TTL index!")
-        except Exception as e:
-            print(f"Could not connect to MongoDB: {e}")
-    else:
-        print("MONGODB_URI is not set in environment variables.")
+    if not settings.mongodb_uri:
+        if settings.is_production:
+            raise RuntimeError("MONGODB_URI is required in production.")
+        logger.error("MONGODB_URI is not set.")
+        return
+
+    try:
+        client = AsyncIOMotorClient(settings.mongodb_uri, serverSelectionTimeoutMS=5000)
+        db = client[settings.mongodb_database]
+        await client.admin.command("ping")
+        await db.auth_sessions.create_index("expires_at", expireAfterSeconds=0)
+        logger.info("Connected to MongoDB database '%s'.", settings.mongodb_database)
+    except Exception:
+        client = None
+        db = None
+        logger.exception("Could not connect to MongoDB.")
+        raise
+
 
 async def close_mongo_connection():
     global client
     if client:
         client.close()
-        print("Closed MongoDB connection.")
+        logger.info("Closed MongoDB connection.")
+
 
 def get_database():
     return db

@@ -1,5 +1,6 @@
 # pyrefly: ignore [missing-import]
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
+import logging
 
 from fastapi import APIRouter, HTTPException, status, Query, Depends
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -10,6 +11,7 @@ from bson.objectid import ObjectId
 
 router = APIRouter()
 bearer_scheme = HTTPBearer()
+logger = logging.getLogger(__name__)
 
 
 async def verify_access_token(credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme)):
@@ -28,14 +30,12 @@ async def verify_access_token(credentials: HTTPAuthorizationCredentials = Depend
             detail="Invalid or expired token."
         )
 
-    ist_timezone = timezone(timedelta(hours=5, minutes=30))
-    now = datetime.now(ist_timezone)
+    now = datetime.now(timezone.utc)
     expires_at = session.get("expires_at")
-    
-    # Ensure expires_at is timezone-aware for comparison (MongoDB returns naive UTC)
+
     if expires_at and expires_at.tzinfo is None:
-        expires_at = expires_at.replace(tzinfo=timezone.utc).astimezone(ist_timezone)
-        
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+
     if not expires_at or expires_at <= now:
         await db.auth_sessions.delete_one({"_id": session["_id"]})
         raise HTTPException(
@@ -45,9 +45,9 @@ async def verify_access_token(credentials: HTTPAuthorizationCredentials = Depend
 
     return True
 
+
 @router.post("/contact", status_code=status.HTTP_201_CREATED)
 async def submit_contact(contact: ContactForm):
-    # print("contact.model_dump() ", contact.model_dump())
     db = get_database()
     if db is None:
         raise HTTPException(
@@ -56,7 +56,8 @@ async def submit_contact(contact: ContactForm):
         )
 
     contact_dict = contact.model_dump()
-    
+    contact_dict["created_at"] = datetime.now(timezone.utc)
+
     try:
         # Insert the contact message into the 'contacts' collection
         result = await db.contacts.insert_one(contact_dict)
@@ -68,10 +69,12 @@ async def submit_contact(contact: ContactForm):
                 detail="Failed to submit contact query."
             )
     except Exception as e:
+        logger.exception("Failed to submit contact query.")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"An error occurred: {str(e)}"
-        )
+            detail="Failed to submit contact query."
+        ) from e
+
 
 @router.delete("/contacts", status_code=status.HTTP_200_OK)
 async def delete_contacts(
@@ -88,13 +91,12 @@ async def delete_contacts(
     try:
         object_ids = []
         for id_str in request.ids:
-            try:
-                object_ids.append(ObjectId(id_str))
-            except Exception:
+            if not ObjectId.is_valid(id_str):
                 raise HTTPException(status_code=400, detail=f"Invalid ID format: {id_str}")
+            object_ids.append(ObjectId(id_str))
 
         result = await db.contacts.delete_many({"_id": {"$in": object_ids}})
-        
+
         return {
             "message": f"Successfully deleted {result.deleted_count} contacts.",
             "deleted_count": result.deleted_count
@@ -102,10 +104,13 @@ async def delete_contacts(
     except HTTPException:
         raise
     except Exception as e:
+        logger.exception("Failed to delete contacts.")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"An error occurred: {str(e)}"
-        )
+            detail="Failed to delete contacts."
+        ) from e
+
+
 @router.get("/contacts", status_code=status.HTTP_200_OK)
 async def get_contacts(
     page: int = Query(1, ge=1, description="Page number"),
@@ -120,27 +125,25 @@ async def get_contacts(
         )
 
     skip = (page - 1) * limit
-    
+
     try:
         cursor = db.contacts.find().sort([("created_at", -1)]).skip(skip).limit(limit)
         contacts = await cursor.to_list(length=limit)
-        
+
         total_contacts = await db.contacts.count_documents({})
-        
-        ist_timezone = timezone(timedelta(hours=5, minutes=30))
+
         formatted_contacts = []
         for contact in contacts:
             contact["_id"] = str(contact["_id"])
-            
-            # Convert created_at from MongoDB UTC to IST
+
             created_at = contact.get("created_at")
             if created_at and isinstance(created_at, datetime):
                 if created_at.tzinfo is None:
                     created_at = created_at.replace(tzinfo=timezone.utc)
-                contact["created_at"] = created_at.astimezone(ist_timezone)
-                
+                contact["created_at"] = created_at
+
             formatted_contacts.append(contact)
-            
+
         return {
             "data": formatted_contacts,
             "pagination": {
@@ -151,7 +154,8 @@ async def get_contacts(
             }
         }
     except Exception as e:
+        logger.exception("Failed to retrieve contacts.")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"An error occurred: {str(e)}"
-        )
+            detail="Failed to retrieve contacts."
+        ) from e

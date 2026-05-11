@@ -1,48 +1,53 @@
+from contextlib import asynccontextmanager
+
 # pyrefly: ignore [missing-import]
 from fastapi import FastAPI
-# pyrefly: ignore [missing-import]
 from fastapi.middleware.cors import CORSMiddleware
-from app.database import connect_to_mongo, close_mongo_connection
+
+from app.config import get_settings
+from app.database import close_mongo_connection, connect_to_mongo
 from app.routes import health, contact, auth
 
-# Initialize FastAPI application
-app = FastAPI(
-    title="Portfolio Backend API",
-    description="Backend API for Angular Portfolio Application",
-    version="1.0.0"
-)
+settings = get_settings()
+settings.validate()
 
-# Configure CORS for the Angular frontend
-# You can restrict this to your specific frontend URL in production
-origins = [
-    "http://localhost:4200", # Default Angular local development server
-    "http://127.0.0.1:4200",
-    "https://www.mahipal.tech", # Production frontend URL
-    "https://mahipal.tech" # Production frontend URL without www
-]
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    await connect_to_mongo()
+    try:
+        yield
+    finally:
+        await close_mongo_connection()
+
+
+app = FastAPI(
+    title=settings.app_name,
+    description="Backend API for Angular Portfolio Application",
+    version=settings.app_version,
+    docs_url="/docs" if settings.enable_docs else None,
+    redoc_url="/redoc" if settings.enable_docs else None,
+    openapi_url="/openapi.json" if settings.enable_docs else None,
+    lifespan=lifespan,
+)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=settings.cors_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
-# Application startup and shutdown events to handle MongoDB connection
-@app.on_event("startup")
-async def startup_db_client():
-    await connect_to_mongo()
-
-@app.on_event("shutdown")
-async def shutdown_db_client():
-    await close_mongo_connection()
-
-# Include Routers
 app.include_router(health.router, tags=["Health"])
 app.include_router(auth.router, prefix="/api", tags=["Auth"])
 app.include_router(contact.router, prefix="/api", tags=["Contact"])
 
+
 @app.get("/")
 async def root():
-    return {"message": "Welcome to the Portfolio Backend API. Visit /docs for Swagger UI."}
+    response = {"message": "Welcome to the Portfolio Backend API."}
+    if settings.enable_docs:
+        response["docs"] = "/docs"
+
+    return response
