@@ -1,10 +1,18 @@
 import os
 from functools import lru_cache
+from pathlib import Path
 from typing import List
 
 from dotenv import load_dotenv
 
-load_dotenv()
+# Load environment files in order of preference:
+# 1. .env.local (development - not committed to version control)
+# 2. .env (production - safe to commit with placeholders)
+env_local = Path(__file__).parent.parent / ".env.local"
+if env_local.exists():
+    load_dotenv(env_local, override=True)
+else:
+    load_dotenv()
 
 
 def _parse_csv(value: str) -> List[str]:
