@@ -92,6 +92,14 @@ def censor_profanity(text: str, censor_char: str = "*") -> str:
     return _profanity.censor(text, censor_char)
 
 
+def _normalize_text(text: str) -> str:
+    """Remove separators between characters to catch bypass attempts like 'k u t t a', 'k_u_tt-a', etc."""
+    # Remove common separator characters used to bypass filters
+    for char in [" ", "\t", "_", "-", ".", ",", "|", "/", "\\", "+", "=", "~", "`", "@", "#", "$", "%", "^", "&", "*"]:
+        text = text.replace(char, "")
+    return text
+
+
 def validate_profanity(text: str, field_name: str) -> str | None:
     """
     Validate text for profanity. Returns an error message if profanity is found, else None.
@@ -117,5 +125,14 @@ def validate_profanity(text: str, field_name: str) -> str | None:
     # Also check the full text to catch multi-word phrases
     if contains_profanity(text.lower()):
         return f"{field_name.capitalize()} contains inappropriate language. Please remove offensive words."
+    
+    # Anti-bypass: check normalized version (spaces removed)
+    # Catches attempts like "k u t t a" or "k  u  t  t  a"
+    normalized = _normalize_text(text.lower())
+    original_lower = text.lower()
+    if normalized != original_lower:
+        # Only check if there were actually spaces/tabs removed from original
+        if contains_profanity(normalized):
+            return f"{field_name.capitalize()} contains inappropriate language. Please remove offensive words."
     
     return None
