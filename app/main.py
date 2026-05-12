@@ -2,11 +2,16 @@ from app.routes import reaction
 from contextlib import asynccontextmanager
 
 # pyrefly: ignore [missing-import]
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 
 from app.config import get_settings
 from app.database import close_mongo_connection, connect_to_mongo
+from app.limiter import limiter
 from app.routes import health, contact, auth
 
 settings = get_settings()
@@ -31,6 +36,12 @@ app = FastAPI(
     openapi_url="/openapi.json" if settings.enable_docs else None,
     lifespan=lifespan,
 )
+
+# Add rate limiter to app state
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_middleware(SlowAPIMiddleware)
+
 
 app.add_middleware(
     CORSMiddleware,

@@ -2,12 +2,13 @@
 from datetime import datetime, timezone
 import logging
 
-from fastapi import APIRouter, HTTPException, status, Query, Depends
+from fastapi import APIRouter, HTTPException, status, Query, Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from app.models import ContactForm, DeleteContactsRequest
 from app.database import get_database
 # pyrefly: ignore [missing-import]
 from bson.objectid import ObjectId
+from app.limiter import limiter
 
 router = APIRouter()
 bearer_scheme = HTTPBearer()
@@ -47,7 +48,8 @@ async def verify_access_token(credentials: HTTPAuthorizationCredentials = Depend
 
 
 @router.post("/contact", status_code=status.HTTP_201_CREATED)
-async def submit_contact(contact: ContactForm):
+@limiter.limit("5 per 15 minutes")
+async def submit_contact(contact: ContactForm, request: Request):
     db = get_database()
     if db is None:
         raise HTTPException(
