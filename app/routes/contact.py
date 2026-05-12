@@ -9,6 +9,7 @@ from app.database import get_database
 # pyrefly: ignore [missing-import]
 from bson.objectid import ObjectId
 from app.limiter import limiter
+from app.profanity_filter import validate_profanity
 
 router = APIRouter()
 bearer_scheme = HTTPBearer()
@@ -56,6 +57,16 @@ async def submit_contact(contact: ContactForm, request: Request):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Database connection is not initialized. Check your MONGODB_URI."
         )
+
+    # Validate all text fields for profanity
+    for field_name in ["name", "email", "query"]:
+        field_value = getattr(contact, field_name, "")
+        error_msg = validate_profanity(field_value, field_name)
+        if error_msg:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=error_msg
+            )
 
     contact_dict = contact.model_dump()
     contact_dict["created_at"] = datetime.now(timezone.utc)
