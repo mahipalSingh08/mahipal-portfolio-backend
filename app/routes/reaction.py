@@ -27,6 +27,25 @@ async def add_reaction(reaction: Reaction):
     reaction_dict["created_at"] = datetime.now(timezone.utc)
 
     try:
+
+        if not reaction_dict["reaction"]:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid data received."
+            )
+
+        if not reaction_dict["email"] or not reaction_dict["name"]:
+            count_data = await db.reactions.find_one({"reaction": reaction_dict["reaction"], "count": {"$gte": 1}})
+            if count_data:
+                count_data["count"] += 1
+                await db.reactions.update_one({"reaction": reaction_dict["reaction"]}, {"$set": {"count": count_data["count"]}})
+                return {"message": "Reaction added successfully!"}
+            
+        email = await db.reactions.find_one({"email": reaction_dict["email"]})
+        if email:
+            await db.reactions.update_one({"email": reaction_dict["email"]}, {"$set": {"reaction": reaction_dict["reaction"]}})
+            return {"message": "Reaction updated successfully!"}
+        
         # Insert the reaction into the 'reactions' collection
         result = await db.reactions.insert_one(reaction_dict)
         if result.inserted_id:
@@ -41,4 +60,67 @@ async def add_reaction(reaction: Reaction):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to add reaction."
+        ) from e
+
+@router.get("/reactions", status_code=status.HTTP_200_OK)
+async def get_reactions():
+    db = get_database()
+    if db is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Database connection is not initialized. Check your MONGODB_URI."
+        )
+
+    try:
+        pipeline = [
+                {
+                    "$group": {
+                        "_id": "$reaction",
+                        "count": { "$sum": 1 },
+                        "email": {
+                            "$push": {
+                                "$cond": [
+                                    { "$and": [
+                                        { "$ne": ["$email", ""] },
+                                        { "$ne": ["$email", None] }
+                                    ]},
+                                    "$email",
+                                    "$$REMOVE"
+                                ]
+                            }
+                        }
+                    }
+                },
+                {
+                    "$group": {
+                        "_id": None,
+                        "data": {
+                            "$push": {
+                                "k": "$_id",
+                                "v": {
+                                    "count": "$count",
+                                    "email": "$email"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "$replaceRoot": {
+                        "newRoot": {
+                            "$arrayToObject": "$data"
+                        }
+                    }
+                }
+            ]
+                
+        reactions = await db.reactions.aggregate(pipeline).to_list(length=None)
+        if not reactions:
+            return {"message": "No reactions found."}
+        return reactions
+    except Exception as e:
+        logger.exception("Failed to get reactions.")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to get reactions."
         ) from e
