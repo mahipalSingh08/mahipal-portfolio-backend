@@ -43,6 +43,7 @@ CUSTOM_BAD_WORDS = [
     "kaminay",
     "khota",
     "kutta",
+    "kuuta",
     "kutti",
     "kuttiya",
     "kutte",
