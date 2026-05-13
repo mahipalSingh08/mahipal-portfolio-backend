@@ -6,6 +6,7 @@ class ContactForm(BaseModel):
     name: str = Field(..., min_length=3, max_length=100)
     email: EmailStr = Field(..., max_length=100)
     query: str = Field(..., min_length=10, max_length=1000)
+    website: str = Field("", max_length=500, description="Honeypot field - must be empty for real users")
 
 
 class DeleteContactsRequest(BaseModel):

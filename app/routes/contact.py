@@ -58,6 +58,14 @@ async def submit_contact(contact: ContactForm, request: Request):
             detail="Database connection is not initialized. Check your MONGODB_URI."
         )
 
+    # Honeypot detection: website field must be empty
+    if contact.website:
+        logger.warning(f"Honeypot triggered - bot detected (website field filled): {contact.website}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid request."
+        )
+
     # Validate all text fields for profanity
     for field_name in ["name", "email", "query"]:
         field_value = getattr(contact, field_name, "")
