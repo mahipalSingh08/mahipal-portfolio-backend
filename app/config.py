@@ -44,6 +44,7 @@ class Settings:
     auth_user_id: str | None = os.getenv("AUTH_USER_ID")
     auth_password_hash: str | None = os.getenv("AUTH_PASSWORD_HASH")
     auth_session_duration_minutes: int = _parse_int("AUTH_SESSION_DURATION_MINUTES", 60)
+    redis_url: str | None = os.getenv("REDIS_URL")
     cors_origins: List[str] = _parse_csv(
         os.getenv(
             "CORS_ORIGINS",
