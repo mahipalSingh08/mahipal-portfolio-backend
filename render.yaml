@@ -19,5 +19,7 @@ services:
         sync: false
       - key: AUTH_PASSWORD_HASH
         sync: false
+      - key: REDIS_URL
+        sync: false
       - key: AUTH_SESSION_DURATION_MINUTES
         value: 60
