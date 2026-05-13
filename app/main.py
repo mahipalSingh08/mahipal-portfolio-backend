@@ -1,3 +1,4 @@
+from app.routes import reaction
 from contextlib import asynccontextmanager
 
 # pyrefly: ignore [missing-import]
@@ -41,6 +42,7 @@ app.add_middleware(
 
 app.include_router(health.router, tags=["Health"])
 app.include_router(auth.router, prefix="/api", tags=["Auth"])
+app.include_router(reaction.router, prefix="/api", tags=["Reaction"])
 app.include_router(contact.router, prefix="/api", tags=["Contact"])
 
 
