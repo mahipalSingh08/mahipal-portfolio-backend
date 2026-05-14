@@ -13,6 +13,7 @@ from app.verifyToken import verify_access_token
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
+allowed_reactions = ['Like', 'Celebrate', 'Cheer', 'Appreciate', 'Smile']
 
 @router.post("/reaction", status_code=status.HTTP_201_CREATED)
 @limiter.limit("10 per minute")
@@ -28,6 +29,12 @@ async def add_reaction(reaction: Reaction, request: Request):
     reaction_dict["created_at"] = datetime.now(timezone.utc)
 
     try:
+
+        if reaction_dict["reaction"] not in allowed_reactions:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid reaction."
+            )
 
         if not reaction_dict["reaction"]:
             raise HTTPException(
@@ -73,52 +80,55 @@ async def get_reactions(_: bool = Depends(verify_access_token)):
         )
 
     try:
-        pipeline = [
-                {
-                    "$group": {
-                        "_id": "$reaction",
-                        "count": { "$sum": 1 },
-                        "email": {
-                            "$push": {
-                                "$cond": [
-                                    { "$and": [
-                                        { "$ne": ["$email", ""] },
-                                        { "$ne": ["$email", None] }
-                                    ]},
-                                    "$email",
-                                    "$$REMOVE"
-                                ]
-                            }
-                        }
-                    }
-                },
-                {
-                    "$group": {
-                        "_id": None,
-                        "totalCount": { "$sum": "$count" },
-                        "reactions": {
-                            "$push": {
-                                "reaction": "$_id",
-                                "count": "$count",
-                                "email": "$email"
-                            }
-                        }
-                    }
-                },
-                {
-                    "$unwind": "$reactions"
-                },
-                {
-                    "$replaceRoot": {
-                        "newRoot": {
-                            "$mergeObjects": [
-                                "$reactions",
-                                { "totalCount": "$totalCount" }
-                            ]
-                        }
+        pipeline = pipeline = [
+            # Normalize: use `count` if present, otherwise 1
+            {
+                "$addFields": {
+                    "effectiveCount": {"$ifNull": ["$count", 1]},
+                    "hasEmail": {
+                        "$cond": [
+                            {"$and": [
+                                {"$ifNull": ["$email", False]},
+                                {"$ne": ["$email", ""]}
+                            ]},
+                            1, 0
+                        ]
                     }
                 }
-            ]
+            },
+            # Group by reaction
+            {
+                "$group": {
+                    "_id": "$reaction",
+                    "total": {"$sum": "$effectiveCount"},
+                    "emailCount": {"$sum": "$hasEmail"}
+                }
+            },
+            # Shape each reaction into {reactionName: count, email: emailCount}
+            {
+                "$project": {
+                    "_id": 0,
+                    "reaction": "$_id",
+                    "total": 1,
+                    "emailCount": 1
+                }
+            },
+            # Group all into one doc to also compute totals
+            {
+                "$group": {
+                    "_id": None,
+                    "reactions": {
+                        "$push": {
+                            "reaction": "$reaction",
+                            "total": "$total",
+                            "emailCount": "$emailCount"
+                        }
+                    },
+                    "grandTotal": {"$sum": "$total"},
+                    "grandEmailCount": {"$sum": "$emailCount"}
+                }
+            }
+        ]
                 
         reactions = await db.reactions.aggregate(pipeline).to_list(length=None)
         if not reactions:
