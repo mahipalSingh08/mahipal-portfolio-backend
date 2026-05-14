@@ -3,52 +3,19 @@ from datetime import datetime, timezone
 import logging
 
 from fastapi import APIRouter, HTTPException, status, Query, Depends, Request
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from app.models import Reaction
 from app.database import get_database
 # pyrefly: ignore [missing-import]
 from bson.objectid import ObjectId
 from app.limiter import limiter
+from app.verifyToken import verify_access_token
 
 router = APIRouter()
-bearer_scheme = HTTPBearer()
 logger = logging.getLogger(__name__)
 
 
-async def verify_access_token(credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme)):
-    db = get_database()
-    if db is None:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Database connection is not initialized."
-        )
-
-    token = credentials.credentials
-    session = await db.auth_sessions.find_one({"token": token})
-    if not session:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired token."
-        )
-
-    now = datetime.now(timezone.utc)
-    expires_at = session.get("expires_at")
-
-    if expires_at and expires_at.tzinfo is None:
-        expires_at = expires_at.replace(tzinfo=timezone.utc)
-
-    if not expires_at or expires_at <= now:
-        await db.auth_sessions.delete_one({"_id": session["_id"]})
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired token."
-        )
-
-    return True
-
-
 @router.post("/reaction", status_code=status.HTTP_201_CREATED)
-@limiter.limit("5 per minute")
+@limiter.limit("10 per minute")
 async def add_reaction(reaction: Reaction, request: Request):
     db = get_database()
     if db is None:
