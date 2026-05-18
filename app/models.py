@@ -1,5 +1,4 @@
 from pydantic import BaseModel, EmailStr, Field
-from typing import List
 
 
 class ContactForm(BaseModel):
@@ -10,7 +9,7 @@ class ContactForm(BaseModel):
 
 
 class DeleteContactsRequest(BaseModel):
-    ids: List[str] = Field(..., description="List of MongoDB ObjectIds as strings to delete")
+    ids: list[str] = Field(..., description="List of MongoDB ObjectIds as strings to delete")
 
 
 class AuthLoginRequest(BaseModel):
@@ -27,3 +26,33 @@ class Reaction(BaseModel):
     reaction: str
     email: str
     name: str
+
+
+# ── Chat / AI models ────────────────────────────────────────────────────────
+
+class ChatRequest(BaseModel):
+    """Request model for POST /chat."""
+    message: str = Field(
+        ...,
+        min_length=1,
+        max_length=2000,
+        description="User's message to the AI assistant.",
+    )
+    session_id: str | None = Field(
+        None,
+        max_length=100,
+        description="Optional session ID for conversation history.",
+    )
+
+
+class ChatResponse(BaseModel):
+    """Response model for POST /chat."""
+    response: str = Field(..., description="AI assistant's reply.")
+    session_id: str | None = Field(None, description="Echoed session ID if provided.")
+
+
+
+class CreateSessionResponse(BaseModel):
+    """Response model for POST /chat/session."""
+    session_id: str = Field(..., description="Newly created or existing session ID.")
+    message: str = Field("Session created successfully.", description="Status message.")

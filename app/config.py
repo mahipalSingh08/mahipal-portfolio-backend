@@ -51,6 +51,12 @@ class Settings:
             "http://localhost:4200,http://127.0.0.1:4200",
         )
     )
+    # OpenAI settings
+    openai_api_key: str | None = os.getenv("OPENAI_API_KEY")
+    openai_model: str = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+    openai_max_tokens: int = _parse_int("OPENAI_MAX_TOKENS", 500)
+    openai_temperature: float = float(os.getenv("OPENAI_TEMPERATURE", "0.7"))
+
     enable_docs: bool = _parse_bool(
         os.getenv("ENABLE_DOCS", "false" if environment == "production" else "true")
     )

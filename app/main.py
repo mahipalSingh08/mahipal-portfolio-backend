@@ -12,7 +12,7 @@ from slowapi.middleware import SlowAPIMiddleware
 from app.config import get_settings
 from app.database import close_mongo_connection, connect_to_mongo
 from app.limiter import limiter
-from app.routes import health, contact, auth
+from app.routes import health, contact, auth, chat
 
 settings = get_settings()
 settings.validate()
@@ -55,6 +55,7 @@ app.include_router(health.router, tags=["Health"])
 app.include_router(auth.router, prefix="/api", tags=["Auth"])
 app.include_router(reaction.router, prefix="/api", tags=["Reaction"])
 app.include_router(contact.router, prefix="/api", tags=["Contact"])
+app.include_router(chat.router, tags=["Chat"])
 
 
 @app.get("/")

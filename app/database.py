@@ -1,4 +1,5 @@
 import logging
+from datetime import timedelta
 
 # pyrefly: ignore [missing-import]
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -10,6 +11,9 @@ settings = get_settings()
 
 client = None
 db = None
+
+# TTL: auto-delete chat sessions after 6 months
+CHAT_SESSION_TTL = timedelta(days=180)
 
 
 async def connect_to_mongo():
@@ -24,7 +28,19 @@ async def connect_to_mongo():
         client = AsyncIOMotorClient(settings.mongodb_uri, serverSelectionTimeoutMS=5000)
         db = client[settings.mongodb_database]
         await client.admin.command("ping")
+
+        # ── Indexes ──────────────────────────────────────────────────────
+        # Auth sessions TTL
         await db.auth_sessions.create_index("expires_at", expireAfterSeconds=0)
+
+        # Chat sessions: auto-delete 6 months after last activity
+        await db.chat_sessions.create_index(
+            "created_at",
+            expireAfterSeconds=int(CHAT_SESSION_TTL.total_seconds()),
+        )
+        # Query index on session_id for fast lookups
+        await db.chat_sessions.create_index("session_id", unique=True)
+
         logger.info("Connected to MongoDB database '%s'.", settings.mongodb_database)
     except Exception:
         client = None

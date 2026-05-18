@@ -6,3 +6,5 @@ python-dotenv>=1.0,<2.0
 slowapi>=0.1.9,<1.0
 better_profanity>=0.7.0,<1.0
 redis>=5.0,<6.0
+openai>=1.55,<2.0
+tiktoken>=0.8.0,<1.0
