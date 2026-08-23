@@ -49,5 +49,5 @@ async def login(payload: AuthLoginRequest):
 
     return AuthLoginResponse(
         access_token=token,
-        expires_in=settings.auth_session_duration_minutes * 60,
+        expires_in=settings.auth_session_duration_minutes * 30,
     )
